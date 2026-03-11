@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>俄罗斯方块（离线可玩）</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="topbar">
+        <a class="back" href="../../index.html">← 返回合集</a>
+        <div class="badge">离线可玩</div>
+      </div>
+      <h1>俄罗斯方块</h1>
+      <div class="sub">二当家出品 · 大当家专属</div>
+    </header>
+
+    <section class="layout">
+      <div class="panel">
+        <div class="stat"><span>分数</span><strong id="score">0</strong></div>
+        <div class="stat"><span>等级</span><strong id="level">1</strong></div>
+        <div class="stat"><span>消行</span><strong id="lines">0</strong></div>
+
+        <div class="box">
+          <div class="boxTitle">下一个</div>
+          <canvas id="next" width="120" height="120"></canvas>
+        </div>
+
+        <div class="box">
+          <div class="boxTitle">暂存 (C)</div>
+          <canvas id="hold" width="120" height="120"></canvas>
+        </div>
+
+        <div class="help">
+          <div class="helpTitle">操作</div>
+          <ul>
+            <li>← → 移动</li>
+            <li>↓ 软降</li>
+            <li>↑ 旋转</li>
+            <li>Space 硬降</li>
+            <li>C 暂存</li>
+            <li>P 暂停</li>
+            <li>R 重开</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="stage">
+        <canvas id="game" width="300" height="600"></canvas>
+        <div id="overlay" class="overlay hidden">
+          <div class="overlayCard">
+            <div id="overlayTitle" class="overlayTitle">暂停</div>
+            <div id="overlayBody" class="overlayBody">按 P 继续</div>
+            <button id="btnRestart" class="btn">重新开始 (R)</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>提示：如果你想要“经典规则/7-bag/墙踢/计分细节”调整，告诉二当家。</span>
+    </footer>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,1680 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>坦克大战 · Classic Mode（离线可玩）</title>
+  <style>
+    :root {
+      --bg: #070A14;
+      --panel: rgba(255,255,255,.055);
+      --panel2: rgba(255,255,255,.095);
+      --stroke: rgba(255,255,255,.11);
+      --stroke2: rgba(255,255,255,.20);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.70);
+
+      /* Sci-fi HUD palette */
+      --cyan: #31E7FF;
+      --magenta: #B36BFF;
+      --accent: var(--cyan);
+      --accent2: var(--magenta);
+
+      --danger: #ff4d4f;
+      --grid: rgba(255,255,255,.045);
+      --shadow: rgba(0,0,0,.46);
+      --glow: rgba(49,231,255,.10);
+    }
+
+    * { box-sizing: border-box; }
+
+    /* iOS Safari: reduce accidental zooming on double-tap for controls */
+    html, body { 
+      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
+    }
+    button, canvas, .dpad { touch-action: manipulation; }
+    .dpad button, #btnFire { touch-action: none; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(1100px 700px at 50% 14%, rgba(49,231,255,.12) 0%, rgba(49,231,255,0) 40%),
+        radial-gradient(1200px 800px at 55% 22%, rgba(179,107,255,.12) 0%, rgba(179,107,255,0) 46%),
+        radial-gradient(1200px 820px at 50% 20%, #11173A 0%, var(--bg) 64%);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial;
+    }
+
+    /* subtle scanlines */
+    body:before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255,255,255,.035) 0px,
+        rgba(255,255,255,.035) 1px,
+        rgba(0,0,0,0) 3px,
+        rgba(0,0,0,0) 6px
+      );
+      opacity:.08;
+      mix-blend-mode: overlay;
+    }
+
+    .app {
+      width: min(1000px, 94vw);
+      display: grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    @media (max-width: 860px) {
+      .app { grid-template-columns: 1fr; }
+      /* Mobile: keep full map visible, use on-canvas controls */
+      .side { display: none; }
+    }
+
+    .card {
+      border: 1px solid var(--stroke);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.04) 35%, rgba(0,0,0,.24) 100%),
+        radial-gradient(900px 360px at 26% 0%, rgba(49,231,255,.14) 0%, rgba(49,231,255,0) 60%),
+        radial-gradient(900px 360px at 76% 0%, rgba(179,107,255,.12) 0%, rgba(179,107,255,0) 60%);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 22px 75px var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .gameWrap {
+      position: relative;
+      padding: 14px;
+    }
+
+    /* Mobile HUD controls (NOT covering the map): placed under the HUD on small screens */
+    .touchHUD{
+      display:none;
+      margin-top: 12px;
+    }
+    @media (max-width: 860px){
+      .touchHUD{display:block;}
+      /* shrink canvas to keep everything visible without covering */
+      canvas{
+        max-width: 92vw;
+        max-height: calc(100vh - 430px);
+      }
+    }
+
+    .touchHUD .cluster{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-end;
+      gap: 14px;
+    }
+
+    .touchHUD .pad{
+      width: 188px;
+      height: 188px;
+      border-radius: 28px;
+      background: rgba(0,0,0,.16);
+      border: 1px solid rgba(255,255,255,.14);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 14px 46px rgba(0,0,0,.30);
+      position: relative;
+      overflow: hidden;
+      touch-action:none;
+      user-select:none;
+      -webkit-user-select:none;
+    }
+
+    /* No-gap 4-way pad: direction decided by angle (left/right/up/down) */
+    .touchHUD .pad.padQuad::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(to right, rgba(255,255,255,.12) 0 50%, rgba(255,255,255,.06) 50% 100%),
+        linear-gradient(to bottom, rgba(255,255,255,.12) 0 50%, rgba(255,255,255,.06) 50% 100%);
+      mix-blend-mode: overlay;
+      opacity:.35;
+    }
+
+    .touchHUD .pad.padQuad::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width: 14px;
+      height: 14px;
+      transform: translate(-50%,-50%);
+      border-radius: 99px;
+      border: 1px solid rgba(49,231,255,.25);
+      background: rgba(0,0,0,.18);
+      box-shadow: 0 0 18px rgba(49,231,255,.14);
+    }
+
+    .touchHUD .pad .lab{
+      position:absolute;
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      display:grid;
+      place-items:center;
+      font-size: 22px;
+      font-weight: 900;
+      color: rgba(255,255,255,.88);
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 10px 24px rgba(0,0,0,.22);
+      pointer-events:none;
+    }
+
+    .touchHUD .pad .lab.up{ left:50%; top:12px; transform:translateX(-50%); }
+    .touchHUD .pad .lab.down{ left:50%; bottom:12px; transform:translateX(-50%); }
+    .touchHUD .pad .lab.left{ left:12px; top:50%; transform:translateY(-50%); }
+    .touchHUD .pad .lab.right{ right:12px; top:50%; transform:translateY(-50%); }
+
+    .touchHUD .fire{
+      width: 164px;
+      height: 164px;
+      border-radius: 999px;
+      touch-action:none;
+      border: 1px solid rgba(49,231,255,.24);
+      background: radial-gradient(circle at 30% 30%, rgba(49,231,255,.22), rgba(179,107,255,.10) 55%, rgba(255,255,255,.06));
+      box-shadow:
+        0 16px 56px rgba(0,0,0,.34),
+        0 0 26px rgba(49,231,255,.14);
+      font-size: 22px;
+    }
+
+    .touchHUD .mini{
+      touch-action: manipulation;
+      margin-bottom: 10px;
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+    }
+
+    .touchHUD .mini button{
+      padding: 10px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 1/1;
+      display: block;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.28));
+      border: 1px solid rgba(49,231,255,.22);
+      box-shadow:
+        0 16px 60px rgba(0,0,0,.30),
+        0 0 0 1px rgba(179,107,255,.10) inset,
+        0 0 28px rgba(49,231,255,.10);
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: none;
+    }
+
+    .hud {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .pill {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.045)),
+        radial-gradient(260px 120px at 15% 0%, rgba(49,231,255,.10), rgba(49,231,255,0) 70%),
+        radial-gradient(260px 120px at 85% 0%, rgba(179,107,255,.08), rgba(179,107,255,0) 70%);
+      border: 1px solid rgba(255,255,255,.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .pill span { color: var(--muted); }
+    .pill b {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .4px;
+      text-shadow: 0 0 18px rgba(49,231,255,.12);
+    }
+
+    .side { padding: 14px; }
+
+    .title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin: 2px 2px 10px;
+    }
+
+    .title h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }
+    .title .sub { color: var(--muted); font-size: 12px; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,.16);
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: .2px;
+      box-shadow: 0 10px 26px rgba(0,0,0,.22);
+      transition: transform .06s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:hover {
+      border-color: rgba(255,255,255,.22);
+      background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.07));
+      box-shadow: 0 14px 30px rgba(0,0,0,.26);
+    }
+
+    button:active { transform: translateY(1px); }
+
+    button:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(49,231,255,.16), 0 14px 30px rgba(0,0,0,.26);
+      border-color: rgba(49,231,255,.55);
+    }
+
+    .btnPrimary {
+      border-color: rgba(49,231,255,.45);
+      background: linear-gradient(180deg, rgba(49,231,255,.18), rgba(49,231,255,.10));
+    }
+
+    .btnDanger {
+      border-color: rgba(255,77,79,.55);
+      background: linear-gradient(180deg, rgba(255,77,79,.16), rgba(255,77,79,.10));
+    }
+
+    .row {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.045));
+    }
+
+    .row h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: .2px; }
+
+    .row p, .row li {
+      margin: 6px 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .row ul { margin: 6px 0 0 18px; padding: 0; }
+
+    .overlay {
+      position: absolute;
+      inset: 14px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.70));
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(8px);
+    }
+
+    .overlayHidden { display: none; }
+
+    .overlayBox {
+      width: min(560px, 92%);
+      padding: 14px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.05));
+      border: 1px solid var(--stroke2);
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+    }
+
+    .overlayBox h3 { margin: 2px 0 8px; font-size: 16px; }
+    .overlayBox p { margin: 8px 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    .kbd {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.20);
+      background: rgba(255,255,255,.10);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+
+    .dpad {
+      margin-top: 10px;
+      display: grid;
+      place-items: center;
+      grid-template-columns: repeat(3, 58px);
+      grid-template-rows: repeat(3, 58px);
+      gap: 8px;
+    }
+
+    .dpad button {
+      width: 58px;
+      height: 58px;
+      border-radius: 16px;
+      font-size: 18px;
+    }
+
+    .dpad button#btnFire {
+      border-color: rgba(255,255,255,.22);
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.14), rgba(255,255,255,.06));
+    }
+
+    .dpad .blank { visibility: hidden; }
+
+    .footer { margin-top: 10px; color: rgba(255,255,255,.45); font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card gameWrap">
+      <canvas id="cv" width="720" height="720" aria-label="Tank game canvas"></canvas>
+
+      <div id="overlay" class="overlay">
+        <div class="overlayBox">
+          <h3>坦克大战 · Classic Mode</h3>
+          <p>
+            <span class="kbd">WASD</span> / 方向键移动，<span class="kbd">J</span> / <span class="kbd">Space</span> 开火，
+            <span class="kbd">P</span> 暂停，<span class="kbd">R</span> 重新开始。
+          </p>
+          <div class="controls" style="grid-template-columns: 1fr;">
+            <button id="btnStart" class="btnPrimary">开始</button>
+          </div>
+          <p style="margin-top:10px;">
+            经典玩法要点：保护“基地(★)”，消灭全部敌方坦克后进入下一关。
+          </p>
+          <p style="margin-top:10px;">
+            说明：我实现的是<strong>经典机制</strong>与<strong>风格</strong>（地图、道具、基地、敌人波次等），但没有使用原版的贴图/音效素材（避免版权问题）。
+          </p>
+        </div>
+      </div>
+
+      <div class="hud">
+        <div class="pill"><span>击杀</span><b id="kills">0</b></div>
+        <div class="pill"><span>生命</span><b id="lives">3</b></div>
+        <div class="pill"><span>关卡</span><b id="level">1</b></div>
+        <div class="pill"><span>敌军剩余</span><b id="remain">20</b></div>
+      </div>
+
+      <!-- Mobile controls placed BELOW the HUD (won't cover the map) -->
+      <div class="touchHUD" aria-label="Touch controls">
+        <div class="mini">
+          <button id="btnPause2">暂停/继续</button>
+          <button id="btnRestart2" class="btnDanger">重开</button>
+        </div>
+        <div class="cluster">
+          <div class="pad padQuad" id="touchPad" role="group" aria-label="方向键">
+            <div class="lab up">↑</div>
+            <div class="lab down">↓</div>
+            <div class="lab left">←</div>
+            <div class="lab right">→</div>
+          </div>
+          <button id="btnFire2" class="fire">●</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card side">
+      <div class="title">
+        <h1>控制面板</h1>
+        <div class="sub">离线可玩 · 单文件</div>
+      </div>
+
+      <div class="controls">
+        <button id="btnPause">暂停/继续</button>
+        <button id="btnRestart" class="btnDanger">重新开始</button>
+        <button id="btnToggleGrid">网格：开</button>
+        <button id="btnNextLevel">下一关（调试）</button>
+      </div>
+
+      <div class="row">
+        <h2>手机方向键 / 开火</h2>
+        <div class="dpad" aria-label="Mobile D-pad">
+          <button class="blank">·</button>
+          <button data-dir="up">↑</button>
+          <button class="blank">·</button>
+          <button data-dir="left">←</button>
+          <button id="btnFire">●</button>
+          <button data-dir="right">→</button>
+          <button class="blank">·</button>
+          <button data-dir="down">↓</button>
+          <button class="blank">·</button>
+        </div>
+        <p>提示：手机上按住方向键可连续移动。</p>
+      </div>
+
+      <div class="row">
+        <h2>经典模式机制（已实现）</h2>
+        <ul>
+          <li>基地(★)：被击中立即失败</li>
+          <li>地形：砖墙(可打碎) / 钢墙(需高火力) / 水域(不可通过不可穿弹) / 草丛(遮挡) / 冰面(打滑)</li>
+          <li>敌军波次：本关敌人打完自动下一关</li>
+          <li>道具：★升星、⛑护盾、🕒冻结、🧨炸弹、🧱铁锹(加固基地)、+1命</li>
+        </ul>
+      </div>
+
+      <div class="footer">Made for 大当家 · 二当家出品</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ===== Canvas =====
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  // ===== UI =====
+  const overlay = document.getElementById('overlay');
+  const btnStart = document.getElementById('btnStart');
+  const btnPause = document.getElementById('btnPause');
+  const btnRestart = document.getElementById('btnRestart');
+  const btnToggleGrid = document.getElementById('btnToggleGrid');
+  const btnNextLevel = document.getElementById('btnNextLevel');
+  const btnFire = document.getElementById('btnFire');
+
+  // Mobile on-canvas controls
+  const btnPause2 = document.getElementById('btnPause2');
+  const btnRestart2 = document.getElementById('btnRestart2');
+  const btnFire2 = document.getElementById('btnFire2');
+  const touchPad = document.getElementById('touchPad');
+
+  const elKills = document.getElementById('kills');
+  const elLives = document.getElementById('lives');
+  const elLevel = document.getElementById('level');
+  const elRemain = document.getElementById('remain');
+
+  // ===== Constants =====
+  const GRID = 24;             // 24x24 tile map (720/24 => 30px)
+  const TILE = cv.width / GRID;
+
+  const DIRS = {
+    up:    { x: 0,  y: -1, a: -Math.PI/2 },
+    down:  { x: 0,  y: 1,  a: Math.PI/2 },
+    left:  { x: -1, y: 0,  a: Math.PI },
+    right: { x: 1,  y: 0,  a: 0 },
+  };
+
+  // Tile types
+  const T = {
+    EMPTY: 0,
+    BRICK: 1,
+    STEEL: 2,
+    WATER: 3,
+    FOREST: 4,
+    ICE: 5,
+    BASE: 6,
+  };
+
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const rndPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  // ===== Levels (handcrafted, classic-ish) =====
+  // Legend: . empty, # brick, S steel, ~ water, ^ forest, * ice
+  const LEVELS = [
+    [
+      'SSSSSSSSSSSSSSSSSSSSSSSS',
+      'S..#....^....#....^....S',
+      'S..#....^....#....^....S',
+      'S..#######....#######..S',
+      'S..............~..~....S',
+      'S..S..S..S......~..~...S',
+      'S..S..S..S.............S',
+      'S..#####..####..#####..S',
+      'S..#..^.....^.....^.#..S',
+      'S..#..^.....^.....^.#..S',
+      'S..#####..####..#####..S',
+      'S......~..~........... S'.replace(' ','.'),
+      'S......~..~..****......S',
+      'S...........****...... S'.replace(' ','.'),
+      'S..#####..####..#####..S',
+      'S..#.................#.S',
+      'S..#..S..S..S..S..S..#.S',
+      'S..#.................#.S',
+      'S..#####..####..#####..S',
+      'S......................S',
+      'S....####......####....S',
+      'S....####......####....S',
+      'S......................S',
+      'SSSSSSSSSSSSSSSSSSSSSSSS',
+    ],
+    [
+      'SSSSSSSSSSSSSSSSSSSSSSSS',
+      'S..~~~~....####....~~~~.S',
+      'S..~~~~....####....~~~~.S',
+      'S..####....^^^^....####.S',
+      'S..####....^^^^....####.S',
+      'S..........####..........S'.slice(0,24),
+      'S..S..S..S..S..S..S..S..S',
+      'S..#..#..#..#..#..#..#..S',
+      'S..#..#..#..#..#..#..#..S',
+      'S..S..S..S..S..S..S..S..S',
+      'S....****........****...S',
+      'S....****........****...S',
+      'S..........####..........S'.slice(0,24),
+      'S..####....####....####.S',
+      'S..####....####....####.S',
+      'S..~~~~.............~~~~S',
+      'S..~~~~.............~~~~S',
+      'S..####..S..S..S..####..S',
+      'S..#..................#.S',
+      'S..#..^^^^^^^^^^^^^^^^#.S',
+      'S..#..................#.S',
+      'S..####..S..S..S..####..S',
+      'S......................S',
+      'SSSSSSSSSSSSSSSSSSSSSSSS',
+    ],
+    [
+      'SSSSSSSSSSSSSSSSSSSSSSSS',
+      'S..#..#..#..#..#..#..#..S',
+      'S..#..#..#..#..#..#..#..S',
+      'S..#..S..S..S..S..S..#..S',
+      'S..#..................#..S'.slice(0,24),
+      'S..#..~~~~..####..~~~~#..S'.slice(0,24),
+      'S..#..~~~~..####..~~~~#..S'.slice(0,24),
+      'S..#..####..^^^^..#####..S'.slice(0,24),
+      'S..#..####..^^^^..#####..S'.slice(0,24),
+      'S..#..................#..S'.slice(0,24),
+      'S..#..****........****#..S'.slice(0,24),
+      'S..#..****........****#..S'.slice(0,24),
+      'S..#..................#..S'.slice(0,24),
+      'S..#..S..S..S..S..S..#..S',
+      'S..#..#..#..#..#..#..#..S',
+      'S......................S',
+      'S..####..####..####..###S',
+      'S..#..................#.S',
+      'S..#..^^^^^^^^^^^^^^^^#.S',
+      'S..#..................#.S',
+      'S..###..####..####..####S',
+      'S......................S',
+      'S......................S',
+      'SSSSSSSSSSSSSSSSSSSSSSSS',
+    ],
+  ];
+
+  function parseLevel(lines) {
+    const map = new Array(GRID * GRID).fill(T.EMPTY);
+    for (let y = 0; y < GRID; y++) {
+      const row = (lines[y] || '').padEnd(GRID, '.').slice(0, GRID);
+      for (let x = 0; x < GRID; x++) {
+        const c = row[x];
+        const idx = y * GRID + x;
+        map[idx] = (
+          c === '#' ? T.BRICK :
+          c === 'S' ? T.STEEL :
+          c === '~' ? T.WATER :
+          c === '^' ? T.FOREST :
+          c === '*' ? T.ICE :
+          T.EMPTY
+        );
+      }
+    }
+    return map;
+  }
+
+  // ===== Game state =====
+  let showGrid = true;
+  let running = false;
+  let paused = false;
+  let gameOver = false;
+
+  let kills = 0;
+  let lives = 3;
+  let level = 1;
+
+  // enemy wave like classic: 20 per stage, max on-screen 4
+  let enemyTotal = 20;
+  let enemyRemaining = 20; // includes queued + alive
+  let enemyQueue = 20;
+  const MAX_ENEMIES_ON_SCREEN = 4;
+
+  // power-ups
+  let power = null;
+  let freezeTimer = 0;
+  let shovelTimer = 0;
+
+  // map
+  let map = [];
+  let base = { x: Math.floor(GRID / 2), y: GRID - 2, alive: true };
+  let baseRingBackup = null; // for shovel effect
+
+  // entities
+  let player;
+  let enemies = [];
+  let bullets = [];
+
+  // input
+  const keys = new Set();
+  let touchDir = null;
+
+  // timing
+  let lastTs = null;
+
+  // ===== Helpers =====
+  const inBounds = (x, y) => x >= 0 && x < GRID && y >= 0 && y < GRID;
+  const idx = (x, y) => y * GRID + x;
+  const tileAt = (x, y) => (inBounds(x, y) ? map[idx(x, y)] : T.STEEL);
+  const setTile = (x, y, v) => { if (inBounds(x, y)) map[idx(x, y)] = v; };
+
+  function setHUD() {
+    elKills.textContent = String(kills);
+    elLives.textContent = String(lives);
+    elLevel.textContent = String(level);
+    elRemain.textContent = String(enemyRemaining);
+  }
+
+  function showOverlay(title, html) {
+    overlay.classList.remove('overlayHidden');
+    overlay.querySelector('h3').textContent = title;
+    overlay.querySelector('p').innerHTML = html;
+    btnStart.textContent = (running && paused) ? '继续' : '开始';
+  }
+
+  function hideOverlay() { overlay.classList.add('overlayHidden'); }
+
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function aabb(a, b) {
+    return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
+  }
+
+  function tankRect(t) { return { x: t.x, y: t.y, w: t.w, h: t.h }; }
+
+  function isSolidTile(tid) {
+    return tid === T.BRICK || tid === T.STEEL || tid === T.WATER || tid === T.BASE;
+  }
+
+  function tankCanMove(t, nx, ny) {
+    const pad = TILE * 0.10;
+    const corners = [
+      { x: nx + pad,         y: ny + pad },
+      { x: nx + t.w - pad,   y: ny + pad },
+      { x: nx + pad,         y: ny + t.h - pad },
+      { x: nx + t.w - pad,   y: ny + t.h - pad },
+    ];
+    for (const c of corners) {
+      const cx = Math.floor(c.x / TILE);
+      const cy = Math.floor(c.y / TILE);
+      const tid = tileAt(cx, cy);
+      if (isSolidTile(tid)) return false;
+    }
+
+    // also prevent overlapping with base rect (in case base tile is not solid due to rendering)
+    if (base.alive) {
+      const br = { x: base.x * TILE, y: base.y * TILE, w: TILE, h: TILE };
+      if (aabb({ x: nx, y: ny, w: t.w, h: t.h }, br)) return false;
+    }
+
+    return true;
+  }
+
+  function tileUnderTank(t) {
+    const cx = Math.floor((t.x + t.w/2) / TILE);
+    const cy = Math.floor((t.y + t.h/2) / TILE);
+    return tileAt(cx, cy);
+  }
+
+  // ===== Power-ups =====
+  const POWER_TYPES = ['star','helmet','clock','bomb','shovel','life'];
+
+  function spawnPowerUp() {
+    // 1 active at a time, like classic
+    if (power) return;
+
+    // pick empty tile that isn't near base
+    for (let tries = 0; tries < 2000; tries++) {
+      const x = 2 + Math.floor(Math.random() * (GRID - 4));
+      const y = 2 + Math.floor(Math.random() * (GRID - 6));
+      const nearBase = (Math.abs(x - base.x) <= 3) && (Math.abs(y - base.y) <= 3);
+      if (nearBase) continue;
+      if (tileAt(x, y) !== T.EMPTY) continue;
+      power = { x, y, kind: rndPick(POWER_TYPES), ttl: 18, blink: 0 };
+      return;
+    }
+  }
+
+  function applyPower(kind) {
+    if (kind === 'star') {
+      player.rank = clamp(player.rank + 1, 0, 3);
+    } else if (kind === 'helmet') {
+      player.shield = 8.0;
+    } else if (kind === 'clock') {
+      freezeTimer = 8.0;
+    } else if (kind === 'bomb') {
+      // destroy all enemies on screen
+      kills += enemies.length;
+      enemyRemaining = Math.max(0, enemyRemaining - enemies.length);
+      enemies = [];
+    } else if (kind === 'shovel') {
+      shovelTimer = 10.0;
+      fortifyBase(true);
+    } else if (kind === 'life') {
+      lives += 1;
+    }
+  }
+
+  function fortifyBase(steel) {
+    // ring around base (3x3 excluding center)
+    const coords = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      coords.push({ x: base.x + dx, y: base.y + dy });
+    }
+
+    if (!baseRingBackup) {
+      baseRingBackup = coords.map(c => ({ ...c, v: tileAt(c.x, c.y) }));
+    }
+
+    for (const c of coords) {
+      // keep border steel
+      if (!inBounds(c.x, c.y)) continue;
+      setTile(c.x, c.y, steel ? T.STEEL : T.BRICK);
+    }
+  }
+
+  function restoreBaseRing() {
+    if (!baseRingBackup) return;
+    for (const c of baseRingBackup) setTile(c.x, c.y, c.v);
+    baseRingBackup = null;
+  }
+
+  // ===== Entities =====
+  function spawnPlayer() {
+    player = {
+      x: (base.x - 2) * TILE,
+      y: (GRID - 4) * TILE,
+      w: TILE * 0.88,
+      h: TILE * 0.88,
+      dir: DIRS.up,
+      speed: TILE * 6.0,   // px/s
+      cooldown: 0,
+      rank: 0,             // star upgrades 0..3
+      shield: 0,
+      slideHold: 0,
+    };
+  }
+
+  const ENEMY_TYPES = [
+    { name: 'basic',  hp: 1, speed: 4.1, fire: 1.2 },
+    { name: 'fast',   hp: 1, speed: 5.6, fire: 1.0 },
+    { name: 'power',  hp: 1, speed: 4.4, fire: 0.8 },
+    { name: 'armor',  hp: 3, speed: 3.8, fire: 1.0 },
+  ];
+
+  const SPAWNS = [
+    { x: 2, y: 1 },
+    { x: Math.floor(GRID/2) - 1, y: 1 },
+    { x: GRID - 3, y: 1 },
+  ];
+
+  function spawnEnemy() {
+    if (enemyQueue <= 0) return;
+    if (enemies.length >= MAX_ENEMIES_ON_SCREEN) return;
+
+    // find a free spawn
+    const spots = [...SPAWNS].sort(() => Math.random() - 0.5);
+    for (const s of spots) {
+      const ex = s.x * TILE;
+      const ey = s.y * TILE;
+      const candidate = { x: ex, y: ey, w: TILE*0.88, h: TILE*0.88 };
+
+      // must not overlap player/enemies
+      if (player && aabb(candidate, tankRect(player))) continue;
+      if (enemies.some(e => aabb(candidate, tankRect(e)))) continue;
+
+      const type = rndPick(ENEMY_TYPES);
+      const bonus = (Math.random() < 0.18); // bonus carrier like classic
+
+      enemies.push({
+        x: ex, y: ey,
+        w: TILE*0.88, h: TILE*0.88,
+        dir: DIRS.down,
+        speed: TILE * type.speed,
+        cooldown: 0.4,
+        think: 0.3,
+        hp: type.hp,
+        kind: type.name,
+        bonus,
+        spawnInv: 1.0,
+      });
+
+      enemyQueue -= 1;
+      return;
+    }
+  }
+
+  function bulletFrom(tank, friendly) {
+    const dx = tank.dir.x, dy = tank.dir.y;
+    const power = friendly ? tank.rank : 0;
+    const bSpeed = TILE * (power >= 2 ? 18 : 14);
+    const damage = (friendly && power >= 3) ? 2 : 1;
+
+    const bx = tank.x + tank.w/2 + dx * (tank.w * 0.55);
+    const by = tank.y + tank.h/2 + dy * (tank.h * 0.55);
+
+    bullets.push({
+      x: bx, y: by,
+      w: TILE * 0.18, h: TILE * 0.18,
+      vx: dx * bSpeed,
+      vy: dy * bSpeed,
+      ttl: 2.4,
+      friendly,
+      damage,
+      power,
+    });
+  }
+
+  function limitPlayerBullets() {
+    // classic: player may have 1 bullet, with upgrades can have 2
+    const max = (player.rank >= 2) ? 2 : 1;
+    const alive = bullets.filter(b => b.friendly).length;
+    return alive < max;
+  }
+
+  // ===== Setup base + ring =====
+  function placeBase() {
+    base = { x: Math.floor(GRID/2), y: GRID - 2, alive: true };
+
+    // clear base tile
+    setTile(base.x, base.y, T.BASE);
+
+    // put bricks around
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const x = base.x + dx, y = base.y + dy;
+      if (tileAt(x, y) === T.EMPTY) setTile(x, y, T.BRICK);
+    }
+  }
+
+  // ===== Game flow =====
+  function loadStage(n) {
+    const lines = LEVELS[(n - 1) % LEVELS.length];
+    map = parseLevel(lines);
+
+    // place base on top of map
+    placeBase();
+
+    enemies = [];
+    bullets = [];
+    power = null;
+
+    freezeTimer = 0;
+    shovelTimer = 0;
+    restoreBaseRing();
+
+    enemyTotal = 20 + Math.min(10, (n - 1) * 2);
+    enemyRemaining = enemyTotal;
+    enemyQueue = enemyTotal;
+
+    spawnPlayer();
+
+    // initial spawns
+    for (let i = 0; i < 3; i++) spawnEnemy();
+
+    setHUD();
+    draw();
+  }
+
+  function resetGame() {
+    kills = 0;
+    lives = 3;
+    level = 1;
+    running = false;
+    paused = false;
+    gameOver = false;
+
+    loadStage(level);
+
+    showOverlay('坦克大战 · Classic Mode',
+      'WASD/方向键移动，J/Space开火，P暂停，R重开。<br/>' +
+      '保护基地(★)，消灭本关全部敌军后进入下一关。'
+    );
+  }
+
+  function startOrResume() {
+    if (gameOver) {
+      resetGame();
+    }
+    running = true;
+    paused = false;
+    hideOverlay();
+    lastTs = null;
+    requestAnimationFrame(loop);
+  }
+
+  function togglePause() {
+    if (!running || gameOver) return;
+    paused = !paused;
+    if (paused) showOverlay('暂停', '按 <span class="kbd">P</span> 或按钮继续。');
+    else {
+      hideOverlay();
+      lastTs = null;
+      requestAnimationFrame(loop);
+    }
+  }
+
+  function endGame(reason) {
+    gameOver = true;
+    paused = true;
+    running = true;
+    showOverlay('游戏结束', `${reason || '失败'}<br/>击杀：<b style="color:var(--accent)">${kills}</b> · 按 <span class="kbd">R</span> 重新开始`);
+  }
+
+  function winStage() {
+    level += 1;
+    loadStage(level);
+    // brief pause between stages
+    paused = true;
+    running = true;
+    showOverlay(`第 ${level} 关`, '准备好了就点“开始/继续”。');
+  }
+
+  // ===== Update =====
+  function updateTimers(dt) {
+    if (freezeTimer > 0) freezeTimer = Math.max(0, freezeTimer - dt);
+
+    if (shovelTimer > 0) {
+      shovelTimer = Math.max(0, shovelTimer - dt);
+      if (shovelTimer === 0) {
+        restoreBaseRing();
+      }
+    }
+
+    if (power) {
+      power.ttl = Math.max(0, power.ttl - dt);
+      power.blink += dt;
+      if (power.ttl === 0) power = null;
+    }
+
+    if (player && player.shield > 0) player.shield = Math.max(0, player.shield - dt);
+  }
+
+  function updatePlayer(dt) {
+    if (!player) return;
+
+    const onIce = (tileUnderTank(player) === T.ICE);
+
+    // read input
+    const up = keys.has('arrowup') || keys.has('w') || touchDir === 'up';
+    const down = keys.has('arrowdown') || keys.has('s') || touchDir === 'down';
+    const left = keys.has('arrowleft') || keys.has('a') || touchDir === 'left';
+    const right = keys.has('arrowright') || keys.has('d') || touchDir === 'right';
+
+    let mvx = 0, mvy = 0;
+    if (up)    { mvy = -1; player.dir = DIRS.up; }
+    else if (down)  { mvy =  1; player.dir = DIRS.down; }
+    else if (left)  { mvx = -1; player.dir = DIRS.left; }
+    else if (right) { mvx =  1; player.dir = DIRS.right; }
+
+    // ice sliding: keep moving briefly even if input released
+    if (onIce) {
+      if (mvx !== 0 || mvy !== 0) player.slideHold = 0.20;
+      else if (player.slideHold > 0) {
+        player.slideHold = Math.max(0, player.slideHold - dt);
+        mvx = player.dir.x;
+        mvy = player.dir.y;
+      }
+    } else {
+      player.slideHold = 0;
+    }
+
+    const sp = player.speed;
+    const nx = player.x + mvx * sp * dt;
+    const ny = player.y + mvy * sp * dt;
+
+    if (mvx !== 0 || mvy !== 0) {
+      if (tankCanMove(player, nx, player.y)) player.x = nx;
+      if (tankCanMove(player, player.x, ny)) player.y = ny;
+    }
+
+    player.cooldown = Math.max(0, player.cooldown - dt);
+
+    const fire = keys.has('j') || keys.has(' ') || keys.has('space') || keys.has('spacebar');
+    if (fire && player.cooldown <= 0 && limitPlayerBullets()) {
+      bulletFrom(player, true);
+      // faster fire at higher rank
+      player.cooldown = (player.rank >= 1) ? 0.18 : 0.25;
+    }
+
+    // pickup power-up
+    if (power) {
+      const pr = { x: power.x * TILE + TILE*0.12, y: power.y * TILE + TILE*0.12, w: TILE*0.76, h: TILE*0.76 };
+      if (aabb(tankRect(player), pr)) {
+        applyPower(power.kind);
+        power = null;
+      }
+    }
+  }
+
+  function enemyTryShoot(e) {
+    // simple: sometimes shoot in their current direction; power type shoots more
+    const baseProb = (e.kind === 'power') ? 0.055 : 0.040;
+    if (Math.random() < baseProb && e.cooldown <= 0) {
+      bulletFrom(e, false);
+      e.cooldown = (e.kind === 'power') ? 0.55 : 0.80;
+    }
+  }
+
+  function updateEnemy(e, dt) {
+    if (e.spawnInv > 0) e.spawnInv = Math.max(0, e.spawnInv - dt);
+
+    if (freezeTimer > 0) {
+      // frozen
+      e.cooldown = Math.max(0, e.cooldown - dt);
+      return;
+    }
+
+    e.cooldown = Math.max(0, e.cooldown - dt);
+    e.think = Math.max(0, e.think - dt);
+
+    if (e.think <= 0) {
+      // choose direction: bias towards player/base
+      const bias = Math.random();
+      if (bias < 0.45 && player) {
+        const dx = (player.x - e.x);
+        const dy = (player.y - e.y);
+        if (Math.abs(dx) > Math.abs(dy)) e.dir = dx > 0 ? DIRS.right : DIRS.left;
+        else e.dir = dy > 0 ? DIRS.down : DIRS.up;
+      } else if (bias < 0.70) {
+        // aim at base
+        const dx = (base.x * TILE - e.x);
+        const dy = (base.y * TILE - e.y);
+        if (Math.abs(dx) > Math.abs(dy)) e.dir = dx > 0 ? DIRS.right : DIRS.left;
+        else e.dir = dy > 0 ? DIRS.down : DIRS.up;
+      } else {
+        e.dir = rndPick([DIRS.up, DIRS.down, DIRS.left, DIRS.right]);
+      }
+      e.think = 0.20 + Math.random() * 0.55;
+    }
+
+    const nx = e.x + e.dir.x * e.speed * dt;
+    const ny = e.y + e.dir.y * e.speed * dt;
+
+    // prevent overlapping with other tanks
+    const test = { x: nx, y: ny, w: e.w, h: e.h };
+    const overlap = (player && aabb(test, tankRect(player))) || enemies.some(o => o !== e && aabb(test, tankRect(o)));
+
+    if (!overlap && tankCanMove(e, nx, e.y)) e.x = nx;
+    else e.think = 0;
+
+    const test2 = { x: e.x, y: ny, w: e.w, h: e.h };
+    const overlap2 = (player && aabb(test2, tankRect(player))) || enemies.some(o => o !== e && aabb(test2, tankRect(o)));
+
+    if (!overlap2 && tankCanMove(e, e.x, ny)) e.y = ny;
+    else e.think = 0;
+
+    enemyTryShoot(e);
+  }
+
+  function updateBullets(dt) {
+    for (const b of bullets) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.ttl -= dt;
+
+      if (b.ttl <= 0) continue;
+
+      // out of bounds
+      if (b.x < -TILE || b.x > cv.width + TILE || b.y < -TILE || b.y > cv.height + TILE) {
+        b.ttl = 0;
+        continue;
+      }
+
+      // tile collision
+      const cx = Math.floor(b.x / TILE);
+      const cy = Math.floor(b.y / TILE);
+      const tid = tileAt(cx, cy);
+
+      if (tid === T.BRICK) {
+        setTile(cx, cy, T.EMPTY);
+        b.ttl = 0;
+      } else if (tid === T.STEEL) {
+        if (b.friendly && b.power >= 3) {
+          setTile(cx, cy, T.EMPTY);
+        }
+        b.ttl = 0;
+      } else if (tid === T.WATER) {
+        b.ttl = 0;
+      } else if (tid === T.BASE) {
+        // base hit
+        base.alive = false;
+        b.ttl = 0;
+        endGame('基地被击中');
+        continue;
+      }
+
+      // tank collision
+      if (b.ttl <= 0) continue;
+
+      if (b.friendly) {
+        for (const e of enemies) {
+          // ignore spawn inv
+          if (e.spawnInv > 0) continue;
+          if (aabb({ x: b.x - b.w/2, y: b.y - b.h/2, w: b.w, h: b.h }, tankRect(e))) {
+            b.ttl = 0;
+            e.hp -= b.damage;
+            if (e.hp <= 0) {
+              kills += 1;
+              enemyRemaining = Math.max(0, enemyRemaining - 1);
+              if (e.bonus) spawnPowerUp();
+            }
+            break;
+          }
+        }
+      } else {
+        if (player && player.shield <= 0) {
+          const br = { x: b.x - b.w/2, y: b.y - b.h/2, w: b.w, h: b.h };
+          if (aabb(br, tankRect(player))) {
+            b.ttl = 0;
+            lives -= 1;
+            if (lives <= 0) {
+              endGame('被击中，坦克全毁');
+            } else {
+              spawnPlayer();
+              player.shield = 2.0;
+            }
+          }
+        }
+      }
+    }
+
+    // remove dead bullets
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      if (bullets[i].ttl <= 0) bullets.splice(i, 1);
+    }
+
+    // remove dead enemies
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i].hp <= 0) enemies.splice(i, 1);
+    }
+  }
+
+  function updateSpawns(dt) {
+    // drip spawn
+    if (!running || paused || gameOver) return;
+
+    // spawn more enemies if needed
+    if (enemyQueue > 0 && enemies.length < MAX_ENEMIES_ON_SCREEN) {
+      // chance per frame
+      if (Math.random() < 0.06) spawnEnemy();
+    }
+
+    // win condition
+    if (!gameOver && enemyRemaining === 0 && enemies.length === 0 && enemyQueue === 0) {
+      winStage();
+    }
+  }
+
+  // ===== Render =====
+  function drawGrid() {
+    if (!showGrid) return;
+    ctx.save();
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+    ctx.lineWidth = 1;
+    for (let i = 1; i < GRID; i++) {
+      const p = i * TILE;
+      ctx.beginPath();
+      ctx.moveTo(p, 0); ctx.lineTo(p, cv.height); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, p); ctx.lineTo(cv.width, p); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawTile(x, y, tid) {
+    const px = x * TILE;
+    const py = y * TILE;
+
+    if (tid === T.BRICK) {
+      // pixel bricks
+      ctx.fillStyle = 'rgba(255,210,120,.95)';
+      const b = TILE/4;
+      for (let yy = 0; yy < 4; yy++) {
+        for (let xx = 0; xx < 4; xx++) {
+          if ((xx + yy) % 2 === 0) ctx.fillRect(px + xx*b + 1, py + yy*b + 1, b - 2, b - 2);
+        }
+      }
+    } else if (tid === T.STEEL) {
+      ctx.fillStyle = 'rgba(210,230,255,.90)';
+      ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
+      ctx.fillStyle = 'rgba(0,0,0,.18)';
+      ctx.fillRect(px + 4, py + 4, TILE - 8, TILE - 8);
+    } else if (tid === T.WATER) {
+      ctx.fillStyle = 'rgba(110,170,255,.65)';
+      ctx.fillRect(px, py, TILE, TILE);
+      ctx.fillStyle = 'rgba(255,255,255,.12)';
+      for (let i = 0; i < 3; i++) {
+        const yy = py + (i * TILE/3);
+        ctx.fillRect(px, yy, TILE, 2);
+      }
+    } else if (tid === T.ICE) {
+      ctx.fillStyle = 'rgba(180,230,255,.22)';
+      ctx.fillRect(px, py, TILE, TILE);
+      ctx.strokeStyle = 'rgba(255,255,255,.20)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px + TILE*0.15, py + TILE*0.75);
+      ctx.lineTo(px + TILE*0.85, py + TILE*0.25);
+      ctx.stroke();
+    } else if (tid === T.BASE) {
+      // base tile is drawn separately
+    }
+  }
+
+  function drawBase() {
+    const px = base.x * TILE;
+    const py = base.y * TILE;
+    ctx.save();
+
+    // background
+    ctx.fillStyle = base.alive ? 'rgba(255,255,255,.08)' : 'rgba(255,77,79,.16)';
+    ctx.fillRect(px, py, TILE, TILE);
+
+    // star emblem
+    ctx.fillStyle = base.alive ? 'rgba(255,230,120,.95)' : 'rgba(255,77,79,.95)';
+    const cx = px + TILE/2;
+    const cy = py + TILE/2;
+    const r1 = TILE*0.40;
+    const r2 = TILE*0.18;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI/2 + i * Math.PI/5;
+      const r = (i % 2 === 0) ? r1 : r2;
+      const x = cx + Math.cos(a)*r;
+      const y = cy + Math.sin(a)*r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawTank(t, isPlayer) {
+    ctx.save();
+    const baseColor = isPlayer ? 'rgba(124,252,0,.92)' : 'rgba(255,77,79,.92)';
+    const shadow = isPlayer ? 'rgba(124,252,0,.28)' : 'rgba(255,77,79,.28)';
+
+    // spawn inv blink
+    if (!isPlayer && t.spawnInv > 0 && Math.floor(t.spawnInv * 12) % 2 === 0) {
+      ctx.globalAlpha = 0.45;
+    }
+
+    ctx.fillStyle = baseColor;
+    ctx.shadowColor = shadow;
+    ctx.shadowBlur = 10;
+    roundRect(t.x, t.y, t.w, t.h, TILE*0.14);
+    ctx.fill();
+
+    // turret
+    const cx = t.x + t.w/2;
+    const cy = t.y + t.h/2;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.translate(cx, cy);
+    ctx.rotate(t.dir.a);
+    roundRect(0, -t.w*0.12, t.w*0.70, t.w*0.24, t.w*0.12);
+    ctx.fill();
+    ctx.resetTransform();
+
+    // player shield
+    if (isPlayer && t.shield > 0 && Math.floor(t.shield * 10) % 2 === 0) {
+      ctx.strokeStyle = 'rgba(255,255,255,.65)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(t.x + t.w/2, t.y + t.h/2, t.w*0.72, 0, Math.PI*2);
+      ctx.stroke();
+    }
+
+    // enemy armor indication
+    if (!isPlayer && t.kind === 'armor') {
+      ctx.fillStyle = 'rgba(255,255,255,.16)';
+      ctx.fillRect(t.x + 4, t.y + 4, t.w - 8, 3);
+    }
+
+    ctx.restore();
+  }
+
+  function drawBullet(b) {
+    ctx.save();
+    ctx.fillStyle = b.friendly ? 'rgba(255,255,255,.92)' : 'rgba(255,130,130,.92)';
+    roundRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h, b.w);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPower() {
+    if (!power) return;
+    // blink
+    if (Math.floor(power.blink * 6) % 2 === 0) return;
+
+    const px = power.x * TILE;
+    const py = power.y * TILE;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,.14)';
+    roundRect(px + TILE*0.10, py + TILE*0.10, TILE*0.80, TILE*0.80, TILE*0.18);
+    ctx.fill();
+
+    // icon
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.font = `700 ${Math.floor(TILE*0.52)}px ui-sans-serif, system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const icon = (
+      power.kind === 'star' ? '★' :
+      power.kind === 'helmet' ? '⛑' :
+      power.kind === 'clock' ? '🕒' :
+      power.kind === 'bomb' ? '🧨' :
+      power.kind === 'shovel' ? '🧱' :
+      '＋'
+    );
+    ctx.fillText(icon, px + TILE/2, py + TILE/2 + 1);
+
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+
+    // vignette
+    const grad = ctx.createRadialGradient(cv.width/2, cv.height/2, cv.width*0.05, cv.width/2, cv.height/2, cv.width*0.7);
+    grad.addColorStop(0, 'rgba(255,255,255,0.03)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.25)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    drawGrid();
+
+    // draw solid tiles (except forest which is overlay)
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        const tid = tileAt(x, y);
+        if (tid === T.FOREST || tid === T.EMPTY) continue;
+        if (tid === T.BASE) continue;
+        drawTile(x, y, tid);
+      }
+    }
+
+    // base
+    drawBase();
+
+    // power-ups
+    drawPower();
+
+    // bullets
+    for (const b of bullets) if (b.ttl > 0) drawBullet(b);
+
+    // tanks
+    if (player) drawTank(player, true);
+    for (const e of enemies) drawTank(e, false);
+
+    // forest overlay (covers tanks like classic)
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        if (tileAt(x, y) !== T.FOREST) continue;
+        const px = x * TILE;
+        const py = y * TILE;
+        ctx.fillStyle = 'rgba(80,200,120,.18)';
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = 'rgba(80,200,120,.26)';
+        ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
+      }
+    }
+
+    // freeze indicator
+    if (freezeTimer > 0) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(180,230,255,.06)';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.restore();
+    }
+  }
+
+  // ===== Loop =====
+  function loop(ts) {
+    if (!running || paused || gameOver) return;
+    if (lastTs == null) lastTs = ts;
+    const dt = Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+
+    updateTimers(dt);
+    updatePlayer(dt);
+    for (const e of enemies) updateEnemy(e, dt);
+    updateBullets(dt);
+    updateSpawns(dt);
+
+    setHUD();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ===== Input =====
+  // iOS Safari: prevent double-tap to zoom on specific controls
+  function preventDblTapZoom(el) {
+    if (!el) return;
+    let last = 0;
+    el.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - last < 350) {
+        e.preventDefault();
+      }
+      last = now;
+    }, { passive: false });
+  }
+
+  preventDblTapZoom(btnFire);
+  preventDblTapZoom(btnFire2);
+  // NOTE: dpad const is declared later; avoid TDZ by querying directly here
+  preventDblTapZoom(document.querySelector('.dpad'));
+  preventDblTapZoom(touchPad);
+  preventDblTapZoom(btnStart);
+  preventDblTapZoom(btnPause);
+  preventDblTapZoom(btnRestart);
+  preventDblTapZoom(btnPause2);
+  preventDblTapZoom(btnRestart2);
+
+  function keyNorm(k) {
+    const t = k.toLowerCase();
+    if (t === ' ') return 'space';
+    return t;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    const k = keyNorm(e.key);
+    keys.add(k);
+
+    if (k === 'p') {
+      e.preventDefault();
+      if (!running) startOrResume();
+      else togglePause();
+    }
+    if (k === 'r') {
+      e.preventDefault();
+      resetGame();
+      startOrResume();
+    }
+    if (k === ' ') {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  window.addEventListener('keyup', (e) => {
+    keys.delete(keyNorm(e.key));
+  });
+
+  // Touch controls (hold) - side panel dpad
+  const dpad = document.querySelector('.dpad');
+  dpad?.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const dir = b.getAttribute('data-dir');
+    if (dir) {
+      touchDir = dir;
+      if (!running) startOrResume();
+    }
+  });
+  dpad?.addEventListener('pointerup', () => { touchDir = null; });
+  dpad?.addEventListener('pointerleave', () => { touchDir = null; });
+
+  // Touch controls (hold) - on-canvas mobile pad
+  function dirFromPadEvent(e) {
+    if (!touchPad) return null;
+    const r = touchPad.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const x = e.clientX ?? cx;
+    const y = e.clientY ?? cy;
+    const dx = x - cx;
+    const dy = y - cy;
+
+    // dead-zone for steadier control
+    if (Math.hypot(dx, dy) < Math.max(18, Math.min(r.width, r.height) * 0.10)) return null;
+
+    // choose axis with larger magnitude
+    if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+    return dy > 0 ? 'down' : 'up';
+  }
+
+  touchPad?.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const dir = dirFromPadEvent(e);
+    if (dir) {
+      touchDir = dir;
+      if (!running) startOrResume();
+    }
+    touchPad.setPointerCapture?.(e.pointerId);
+  }, { passive: false });
+
+  touchPad?.addEventListener('pointermove', (e) => {
+    if (!touchDir) return;
+    e.preventDefault();
+    const dir = dirFromPadEvent(e);
+    if (dir) touchDir = dir;
+  }, { passive: false });
+
+  touchPad?.addEventListener('pointerup', (e) => { e.preventDefault(); touchDir = null; }, { passive: false });
+  touchPad?.addEventListener('pointercancel', (e) => { e.preventDefault(); touchDir = null; }, { passive: false });
+  touchPad?.addEventListener('pointerleave', (e) => { e.preventDefault(); touchDir = null; }, { passive: false });
+
+  function tryFireOnce() {
+    if (!running) startOrResume();
+    if (player && !paused && !gameOver) {
+      if (player.cooldown <= 0 && limitPlayerBullets()) {
+        bulletFrom(player, true);
+        player.cooldown = (player.rank >= 1) ? 0.18 : 0.25;
+      }
+    }
+  }
+
+  // Click fallback
+  btnFire.addEventListener('click', () => tryFireOnce());
+  btnFire2?.addEventListener('click', () => tryFireOnce());
+
+  // iOS Safari: make rapid fire smooth by handling press-and-hold (no zoom)
+  function bindHoldToFire(el) {
+    if (!el) return;
+    let holding = false;
+    let raf = 0;
+
+    const tick = () => {
+      if (!holding) return;
+      tryFireOnce();
+      raf = requestAnimationFrame(tick);
+    };
+
+    const start = (e) => {
+      e.preventDefault();
+      holding = true;
+      tick();
+    };
+
+    const stop = (e) => {
+      if (e) e.preventDefault();
+      holding = false;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    };
+
+    el.addEventListener('pointerdown', start, { passive: false });
+    window.addEventListener('pointerup', stop, { passive: false });
+    el.addEventListener('pointerleave', stop, { passive: false });
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  bindHoldToFire(btnFire);
+  bindHoldToFire(btnFire2);
+
+
+  // Buttons
+  btnStart.addEventListener('click', () => startOrResume());
+  const onPauseClick = () => {
+    if (!running) startOrResume();
+    else togglePause();
+  };
+  btnPause.addEventListener('click', onPauseClick);
+  btnPause2?.addEventListener('click', onPauseClick);
+
+  const onRestartClick = () => { resetGame(); startOrResume(); };
+  btnRestart.addEventListener('click', onRestartClick);
+  btnRestart2?.addEventListener('click', onRestartClick);
+
+  btnToggleGrid.addEventListener('click', () => {
+    showGrid = !showGrid;
+    btnToggleGrid.textContent = `网格：${showGrid ? '开' : '关'}`;
+    draw();
+  });
+  btnNextLevel.addEventListener('click', () => {
+    winStage();
+  });
+
+  // Init
+  resetGame();
+  setHUD();
+  draw();
+})();
+</script>
+</body>
+</html>
