@@ -269,6 +269,7 @@
     gameOver: false,
     lockDelay: 500,
     lockCounter: 0,
+    maxLockResets: 15,
     fx: { particles: [], flash: 0, shake: 0, clearWipe: null },
     clearing: null,
   };
@@ -299,6 +300,7 @@
       matrix: m,
       rot: 0, // 0=spawn, 1=R, 2=2, 3=L
       pos: { x: Math.floor(COLS / 2) - Math.ceil(N / 2), y: -1 },
+      lockResets: 0,
     };
     return piece;
   };
@@ -574,8 +576,11 @@
     if (collides(state.arena, state.current)) {
       state.current.pos.x = oldX;
     } else {
-      // moving on the floor should reset lock delay
-      if (isGrounded(state.current)) state.lockCounter = 0;
+      // moving on the floor can reset lock delay, but not indefinitely
+      if (isGrounded(state.current) && state.current.lockResets < state.maxLockResets) {
+        state.lockCounter = 0;
+        state.current.lockResets++;
+      }
     }
   };
 
@@ -600,7 +605,10 @@
       piece.pos.y = oldY - dyUp;
       if (!collides(state.arena, piece)) {
         piece.rot = to;
-        if (isGrounded(piece)) state.lockCounter = 0;
+        if (isGrounded(piece) && piece.lockResets < state.maxLockResets) {
+          state.lockCounter = 0;
+          piece.lockResets++;
+        }
         return;
       }
     }
@@ -632,6 +640,14 @@
 
     state.holdUsed = true;
     state.lockCounter = 0;
+    state.current.lockResets = 0;
+
+    if (collides(state.arena, state.current)) {
+      state.gameOver = true;
+      state.paused = true;
+      setOverlay(true, '游戏结束', '按 R 重新开始');
+    }
+
     drawPreviews();
   };
 
